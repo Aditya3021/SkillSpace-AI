@@ -1,6 +1,7 @@
 import {
   AmbientLight,
   BoxGeometry,
+  CylinderGeometry,
   DirectionalLight,
   Group,
   Mesh,
@@ -9,9 +10,14 @@ import {
   RayInteractable,
   SessionMode,
   SphereGeometry,
+  Vector3,
   World,
 } from "@iwsdk/core";
 import type {CareerNode,SceneAction,Vec3} from "../types";
+
+type Edge={from:string;to:string;mesh:any};
+
+const STORAGE_KEY="skillspace-node-layout-v1";
 
 export class SkillSpaceWorld {
   world!: any;
@@ -19,9 +25,14 @@ export class SkillSpaceWorld {
   originals = new Map<string, Vec3>();
   selectedId: string | null = null;
   onSelect?: (nodeId: string) => void;
+  private edges:Edge[]=[];
+  private raf=0;
+  private edgeMaterial=new MeshStandardMaterial({color:0x475569,roughness:0.8,metalness:0});
+  private savedLayout:Record<string,Vec3>={};
 
   async init(container: HTMLElement, nodes: CareerNode[], onSelect?: (nodeId: string) => void) {
     this.onSelect = onSelect;
+    this.savedLayout=this.readLayout();
     this.world = await World.create(container, {
       xr: {
         sessionMode: SessionMode.ImmersiveVR,
@@ -39,6 +50,8 @@ export class SkillSpaceWorld {
     key.object3D.position.set(2, 4, 2);
 
     for (const node of nodes) this.addNode(node);
+    this.createEdges(nodes);
+    this.startEdgeLoop();
   }
 
   async enterXR() {
@@ -58,6 +71,66 @@ export class SkillSpaceWorld {
 
   isXRActive() {
     return this.world?.visibilityState?.value === "visible";
+  }
+
+  private readLayout():Record<string,Vec3>{
+    try {
+      const raw=localStorage.getItem(STORAGE_KEY);
+      if(!raw)return {};
+      const parsed=JSON.parse(raw);
+      if(!parsed||typeof parsed!=="object")return {};
+      return parsed as Record<string,Vec3>;
+    } catch {
+      return {};
+    }
+  }
+
+  private saveLayout(){
+    const layout:Record<string,Vec3>={};
+    for(const [id,entity] of this.objects){
+      const p=entity.object3D.position;
+      layout[id]=[p.x,p.y,p.z];
+    }
+    try { localStorage.setItem(STORAGE_KEY,JSON.stringify(layout)); } catch {}
+  }
+
+  private createEdges(nodes:CareerNode[]){
+    const nodeIds=new Set(nodes.map(node=>node.id));
+    for(const node of nodes){
+      for(const prerequisite of node.prerequisites){
+        if(!nodeIds.has(prerequisite))continue;
+        const mesh=new Mesh(new CylinderGeometry(0.018,0.018,1,8),this.edgeMaterial);
+        mesh.userData.nonInteractive=true;
+        this.world.createTransformEntity(mesh);
+        this.edges.push({from:prerequisite,to:node.id,mesh});
+      }
+    }
+  }
+
+  private updateEdges(){
+    const up=new Vector3(0,1,0);
+    const direction=new Vector3();
+    for(const edge of this.edges){
+      const a=this.objects.get(edge.from)?.object3D.position;
+      const b=this.objects.get(edge.to)?.object3D.position;
+      if(!a||!b)continue;
+      direction.set(b.x-a.x,b.y-a.y,b.z-a.z);
+      const length=direction.length();
+      if(length<0.001)continue;
+      direction.normalize();
+      edge.mesh.position.set((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2);
+      edge.mesh.quaternion.setFromUnitVectors(up,direction);
+      edge.mesh.scale.set(1,length,1);
+    }
+  }
+
+  private startEdgeLoop(){
+    const tick=()=>{
+      this.updateEdges();
+      this.saveLayout();
+      this.raf=requestAnimationFrame(tick);
+    };
+    this.raf=requestAnimationFrame(tick);
   }
 
   addNode(node: CareerNode) {
@@ -89,7 +162,8 @@ export class SkillSpaceWorld {
     };
 
     group.add(mesh);
-    group.position.set(...node.position);
+    const restored=this.savedLayout[node.id]??node.position;
+    group.position.set(...restored);
 
     const entity = this.world.createTransformEntity(group);
     entity
@@ -126,10 +200,8 @@ export class SkillSpaceWorld {
   }
 
   arrangePath() {
-    const role=this.objects.get("role-data-analyst");
-    if(role)role.object3D.position.set(0,1.65,-2.2);
-
     const layout:Record<string,Vec3>={
+      "role-data-analyst":[0,1.65,-2.2],
       "skill-python":[-1.6,1.15,-2.45],
       "skill-sql":[0,1.15,-2.65],
       "skill-excel":[1.6,1.15,-2.45],
@@ -141,6 +213,7 @@ export class SkillSpaceWorld {
   reset() {
     for (const [id, position] of this.originals) this.move(id, position);
     this.selectedId = null;
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
 
   apply(action: SceneAction) {
@@ -152,6 +225,12 @@ export class SkillSpaceWorld {
   }
 
   dispose() {
+    cancelAnimationFrame(this.raf);
+    this.saveLayout();
+    for(const edge of this.edges){
+      edge.mesh.geometry?.dispose?.();
+    }
+    this.edgeMaterial.dispose();
     this.world?.dispose?.();
   }
 }
