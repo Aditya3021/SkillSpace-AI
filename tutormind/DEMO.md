@@ -11,6 +11,10 @@
 7. Open Progress and explain the review → practice → transfer loop.
 8. Mention the /capabilities endpoint and the video transcription contract as the multimodal extension points.
 
+## Submission evidence
+
+The strongest demo path is: upload a PDF/PPTX → retrieve a grounded answer → show its citation → answer an adaptive question → show mastery change. Keep one course topic consistent across the entire recording so the closed loop is easy to verify.
+
 ## Live deployment
 
 The frontend accepts a backend URL in the AI Tutor screen. Save the deployed FastAPI URL before recording the final demo.
