@@ -47,6 +47,7 @@ export function parseAgentCommand(input:string):SceneAction|null{
   const targetMatch=q.match(/(?:closer to|near|next to|beside|by)\s+(python|sql|excel|pandas|numpy|data analyst)/);
   if((q.includes("move")||q.includes("place")||q.includes("put"))&&source&&targetMatch){
     const targetId=nodeIdFor(targetMatch[1]);
+    if(!targetId)return null;
     const sourceNode=nodeById(source);
     const targetNode=targetId?nodeById(targetId):null;
     if(sourceNode&&targetNode&&source!==targetId){
