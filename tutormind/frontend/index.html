@@ -42,7 +42,24 @@ let materials=["Computer Networks — Textbook.pdf","Computer Networks — Lectu
 function show(id,b){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');render()}
 function render(){let h=Object.entries(mastery).map(([k,v])=>'<div style="margin:12px 0;font-size:12px"><div style="display:flex;justify-content:space-between"><span>'+k+'</span><span>'+v+'%</span></div><div class="bar"><div class="fill" style="width:'+v+'%"></div></div></div>').join('');document.getElementById('mastery').innerHTML=h;document.getElementById('progressbars').innerHTML=h;document.getElementById('materialsList').innerHTML=materials.map(x=>'<div class="source">'+x+'<div class="muted">Indexed • citation metadata retained</div></div>').join('');quiz()}
 function addFiles(el){[...el.files].forEach(f=>materials.push(f.name));render()}
-function ask(){let q=document.getElementById('q');if(!q.value.trim())return;let c=document.getElementById('chat');c.innerHTML+='<div class="msg user">'+q.value+'</div><div class="msg ai">Based on indexed course evidence, TCP congestion avoidance controls sending more cautiously after initial growth.<br><br><span class="muted">Source: Computer Networks — Textbook, p.143<br>Source: Lecture 04, 00:18:42–00:21:10</span></div>';q.value='';c.scrollTop=c.scrollHeight}
+async function ask(){
+ let q=document.getElementById('q');
+ if(!q.value.trim())return;
+ let question=q.value;
+ let c=document.getElementById('chat');
+ c.innerHTML+='<div class="msg user">'+question+'</div>';
+ q.value='';
+ try{
+   const r=await fetch('http://localhost:8000/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question,learner_id:'demo-learner'})});
+   if(!r.ok) throw new Error('backend unavailable');
+   const d=await r.json();
+   const cites=d.citations.map(x=>'<div>Source: '+x.source_id+' · '+(x.locator||'location unavailable')+'</div>').join('');
+   c.innerHTML+='<div class="msg ai">'+d.answer+'<br><br><span class="muted">'+cites+'</span></div>';
+ }catch(e){
+   c.innerHTML+='<div class="msg ai">Demo mode: connect the FastAPI backend to enable live source-grounded answers.</div>';
+ }
+ c.scrollTop=c.scrollHeight;
+}
 let qi=0,qs=[["Which phase grows the congestion window more cautiously?",["Slow start","Congestion avoidance","ARP","DNS"],1],["What can indicate possible congestion to TCP?",["Packet loss / ACK behavior","Screen size","MAC vendor","DNS name"],0]];
 function quiz(){let q=qs[qi%qs.length];document.getElementById('quizbox').innerHTML='<h2>'+q[0]+'</h2>'+q[1].map((x,i)=>'<button class="option" onclick="answer('+i+','+q[2]+',this)">'+x+'</button>').join('')+'<p id="fb" class="muted"></p>'}
 function answer(i,c,e){document.querySelectorAll('.option').forEach(x=>x.disabled=true);if(i===c){e.style.borderColor='#61d9a1';mastery["Congestion avoidance"]=Math.min(100,mastery["Congestion avoidance"]+6);document.getElementById('fb').textContent='Correct — mastery increased.'}else{e.style.borderColor='#ff6876';document.querySelectorAll('.option')[c].style.borderColor='#61d9a1';mastery["Congestion avoidance"]=Math.max(0,mastery["Congestion avoidance"]-2);document.getElementById('fb').textContent='Not quite — next activity will reteach this concept.'}qi++;setTimeout(render,700)}
