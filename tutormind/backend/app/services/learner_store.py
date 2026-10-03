@@ -1,9 +1,11 @@
+import os
 import sqlite3
 from pathlib import Path
 
 class LearnerStore:
     def __init__(self, db_path=None):
-        self.db_path = db_path or str(Path(__file__).resolve().parents[2] / "tutormind.db")
+        configured = db_path or os.getenv("TUTORMIND_DB_PATH")
+        self.db_path = str(configured or (Path(__file__).resolve().parents[2] / "tutormind.db"))
         self._init()
 
     def _connect(self):
