@@ -1,24 +1,30 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from .models.schemas import AskRequest, AskResponse, AssessmentEvent
 from .services.ingestion import ingest_file
 from .services.grounding import grounded_demo_answer, STORE
 from .services.learner import LearnerModel
+from .services.learner_store import LearnerStore
+from .services.quiz import QuizRequest, QuizEngine
 from .services.llm import provider_status
 from .services.video import transcription_contract
 
-app = FastAPI(title="TutorMind AI", version="0.3.0")
+app = FastAPI(title="TutorMind AI", version="0.4.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 LEARNER = LearnerModel()
+LEARNER_STORE = LearnerStore()
+QUIZ = QuizEngine(LEARNER_STORE)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "tutormind-ai", "version": "0.3.0"}
+    return {"status": "ok", "service": "tutormind-ai", "version": "0.4.0"}
 
 @app.get("/capabilities")
 def capabilities():
-    return {"pdf": True, "pptx": True, "video_contract": True,
-            "retrieval": True, "adaptive_assessment": True, "llm": provider_status()}
+    return {"pdf": True, "pptx": True, "video_contract": True, "retrieval": True,
+            "adaptive_assessment": True, "persistent_learner": True, "llm": provider_status()}
 
 @app.post("/ingest")
 async def ingest(file: UploadFile):
@@ -47,9 +53,16 @@ def ask(req: AskRequest):
 
 @app.post("/assessment")
 def assessment(event: AssessmentEvent):
-    mastery = LEARNER.update(event.concept, event.correct, event.difficulty)
-    return {"concept": event.concept, "mastery": mastery}
+    mastery = LEARNER_STORE.get(event.learner_id, event.concept)
+    delta = 0.10 * (1 + event.difficulty)
+    mastery = max(0, min(1, mastery + delta if event.correct else mastery - delta * 0.8))
+    LEARNER_STORE.set(event.learner_id, event.concept, round(mastery, 4))
+    return {"learner_id": event.learner_id, "concept": event.concept, "mastery": round(mastery, 4)}
 
 @app.get("/learner/weak")
-def weak():
-    return {"weak_concepts": [{"concept": c, "mastery": m} for c, m in LEARNER.weak_concepts()]}
+def weak(learner_id: str = "demo-learner"):
+    return {"learner_id": learner_id, "weak_concepts": [{"concept": c, "mastery": m} for c, m in LEARNER_STORE.weak(learner_id)]}
+
+@app.post("/quiz/next")
+def next_quiz(req: QuizRequest):
+    return QUIZ.next_question(req.learner_id, req.concept)
