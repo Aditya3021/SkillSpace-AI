@@ -27,6 +27,7 @@ export class SkillSpaceWorld {
   onSelect?: (nodeId: string) => void;
   private edges:Edge[]=[];
   private raf=0;
+  private saveTimer=0;
   private edgeMaterial=new MeshStandardMaterial({color:0x475569,roughness:0.8,metalness:0});
   private savedLayout:Record<string,Vec3>={};
 
@@ -127,10 +128,10 @@ export class SkillSpaceWorld {
   private startEdgeLoop(){
     const tick=()=>{
       this.updateEdges();
-      this.saveLayout();
       this.raf=requestAnimationFrame(tick);
     };
     this.raf=requestAnimationFrame(tick);
+    this.saveTimer=window.setInterval(()=>this.saveLayout(),1000);
   }
 
   addNode(node: CareerNode) {
@@ -226,6 +227,7 @@ export class SkillSpaceWorld {
 
   dispose() {
     cancelAnimationFrame(this.raf);
+    window.clearInterval(this.saveTimer);
     this.saveLayout();
     for(const edge of this.edges){
       edge.mesh.geometry?.dispose?.();
