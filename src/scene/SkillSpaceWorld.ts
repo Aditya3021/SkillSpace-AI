@@ -1,7 +1,6 @@
 import {
   AmbientLight,
   BoxGeometry,
-  CanvasTexture,
   CylinderGeometry,
   DirectionalLight,
   Group,
@@ -165,7 +164,6 @@ export class SkillSpaceWorld {
 
     ctx.fillStyle="#8d98b8";
     ctx.font="700 22px Inter, system-ui, sans-serif";
-    ctx.letterSpacing="3px";
     ctx.fillText("AI COPILOT",40,55);
 
     ctx.fillStyle=listening?"#22c55e":"#7c5cff";
