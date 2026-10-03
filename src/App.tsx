@@ -1,8 +1,9 @@
 import {useEffect,useRef,useState}from"react";
 import{careerNodes,missions}from"./data/career";
 import{parseAgentCommand,agentSuggestions}from"./ai/SceneAction";
+import{askRemoteAgent,remoteToSceneAction}from"./ai/RemoteAgent";
 import{SkillSpaceWorld}from"./scene/SkillSpaceWorld";
-import type{CareerNode,Mission}from"./types";
+import type{CareerNode,Mission,SceneAction}from"./types";
 
 const missionTemplates:Record<string,Omit<Mission,"id"|"completed">>={
   Python:{title:"Analyze a CSV",skill:"Python",description:"Load a dataset, clean missing values and produce three useful findings.",xp:100},
@@ -21,22 +22,81 @@ export default function App(){
   const[agentStatus,setAgentStatus]=useState("Ready for a scene command.");
   const[xrState,setXrState]=useState<"loading"|"browser"|"xr"|"error">("loading");
   const[listening,setListening]=useState(false);
+  const[thinking,setThinking]=useState(false);
   const recognitionRef=useRef<any>(null);
 
-  useEffect(()=>{
-    if(!host.current)return;
-    let disposed=false;
-    const w=new SkillSpaceWorld();
-    world.current=w;
-    w.init(host.current,careerNodes,(nodeId)=>{
-      const node=careerNodes.find(item=>item.id===nodeId);
-      if(node){setSelected(node);w.focus(nodeId);}
-    },()=>startVoice()).then(()=>{if(!disposed){setXrState("browser");w.setCopilot("DATA ANALYST",agentStatus,false);}}).catch((error)=>{
-      console.error(error);
-      if(!disposed)setXrState("error");
+  const select=(node:CareerNode)=>{
+    setSelected(node);
+    world.current?.focus(node.id);
+    setAgentStatus("Focused "+node.title+".");
+  };
+
+  const createMission=(skill:string,custom?:{title?:string|null;description?:string|null;xp?:number|null})=>{
+    const template=missionTemplates[skill]??missionTemplates.Python;
+    setMission({
+      id:"agent-"+skill.toLowerCase().replace(/[^a-z0-9]+/g,"-")+"-"+Date.now(),
+      title:custom?.title||template.title,
+      skill,
+      description:custom?.description||template.description,
+      xp:custom?.xp||template.xp,
+      completed:false
     });
-    return()=>{disposed=true;w.dispose();world.current=null;};
-  },[]);
+    setAgentStatus("Created a mission for "+skill+".");
+  };
+
+  const applyAction=(action:SceneAction,message?:string)=>{
+    if(action.type==="FOCUS_NODE"||action.type==="SHOW_SKILL"){
+      const node=careerNodes.find(item=>item.id===action.nodeId);
+      if(node){setSelected(node);world.current?.focus(node.id);setAgentStatus(message||(action.type==="SHOW_SKILL"?"Showing skills for "+node.title+".":"Focused "+node.title+"."));}
+    }
+    if(action.type==="OPEN_MISSION"&&action.skill){
+      const m=missions.find(item=>item.skill.toLowerCase()===action.skill!.toLowerCase())||missions[0];
+      setMission(m);
+      setAgentStatus(message||("Opened the "+m.skill+" mission."));
+    }
+    if(action.type==="CREATE_MISSION"&&action.skill)createMission(action.skill);
+    if(action.type==="MOVE_NODE"&&action.nodeId){
+      world.current?.apply(action);
+      const node=careerNodes.find(item=>item.id===action.nodeId);
+      setAgentStatus(message||(node?"Moved "+node.title+" to the requested position.":"Moved the node."));
+    }
+    if(action.type==="ARRANGE_PATH"){world.current?.apply(action);setAgentStatus(message||"Arranged the career path into a clean spatial layout.");}
+    if(action.type==="RESET_SCENE"){world.current?.apply(action);setAgentStatus(message||"Workspace reset to the original layout.");}
+    if(!["MOVE_NODE","ARRANGE_PATH","RESET_SCENE"].includes(action.type))world.current?.apply(action);
+  };
+
+  const run=async(text:string)=>{
+    const local=parseAgentCommand(text);
+    if(local){
+      applyAction(local);
+      setCommand("");
+      return;
+    }
+
+    setThinking(true);
+    setAgentStatus("AI agent is interpreting the request…");
+    const remote=await askRemoteAgent(text,selected);
+    setThinking(false);
+    if(!remote){
+      setAgentStatus("I couldn't map that request. Try a career, skill, mission, move, arrange, or reset command.");
+      return;
+    }
+
+    const action=remoteToSceneAction(remote);
+    if(remote.action==="CREATE_MISSION"&&remote.skill){
+      createMission(remote.skill,{
+        title:remote.missionTitle,
+        description:remote.missionDescription,
+        xp:remote.missionXp
+      });
+      setAgentStatus(remote.message);
+    }else if(action){
+      applyAction(action,remote.message);
+    }else{
+      setAgentStatus(remote.message||"The AI agent returned no executable scene action.");
+    }
+    setCommand("");
+  };
 
   const startVoice=()=>{
     const SpeechRecognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
@@ -55,7 +115,7 @@ export default function App(){
     recognition.onstart=()=>{setListening(true);setAgentStatus("Listening for a scene command…");};
     recognition.onresult=(event:any)=>{
       const transcript=event.results?.[0]?.[0]?.transcript?.trim()||"";
-      if(transcript)run(transcript);
+      if(transcript)void run(transcript);
     };
     recognition.onerror=()=>{setListening(false);setAgentStatus("Voice input stopped. Try again.");};
     recognition.onend=()=>setListening(false);
@@ -63,47 +123,28 @@ export default function App(){
     try{recognition.start();}catch{setListening(false);}
   };
 
-  const select=(node:CareerNode)=>{
-    setSelected(node);
-    world.current?.focus(node.id);
-    setAgentStatus("Focused "+node.title+".");
-  };
+  useEffect(()=>{
+    if(!host.current)return;
+    let disposed=false;
+    const w=new SkillSpaceWorld();
+    world.current=w;
+    w.init(host.current,careerNodes,(nodeId)=>{
+      const node=careerNodes.find(item=>item.id===nodeId);
+      if(node){setSelected(node);w.focus(nodeId);}
+    },()=>startVoice()).then(()=>{if(!disposed)setXrState("browser");}).catch((error)=>{
+      console.error(error);
+      if(!disposed)setXrState("error");
+    });
+    return()=>{disposed=true;w.dispose();world.current=null;};
+  },[]);
+
+  useEffect(()=>{world.current?.setCopilot(selected.title,agentStatus,listening||thinking);},[selected,agentStatus,listening,thinking]);
+  useEffect(()=>()=>recognitionRef.current?.stop?.(),[]);
 
   const enterXR=async()=>{
     setXrState("loading");
     const entered=await world.current?.enterXR();
     setXrState(entered?"xr":"browser");
-  };
-
-  const createMission=(skill:string)=>{
-    const template=missionTemplates[skill]??missionTemplates.Python;
-    setMission({id:"agent-"+skill.toLowerCase().replace(/[^a-z0-9]+/g,"-"),...template,completed:false});
-    setAgentStatus("Created a mission for "+skill+".");
-  };
-
-  const run=(text:string)=>{
-    const action=parseAgentCommand(text);
-    if(!action){setAgentStatus("I couldn't map that request to a scene action.");return;}
-
-    if(action.type==="FOCUS_NODE"||action.type==="SHOW_SKILL"){
-      const node=careerNodes.find(item=>item.id===action.nodeId);
-      if(node){setSelected(node);world.current?.focus(node.id);setAgentStatus(action.type==="SHOW_SKILL"?"Showing skills for "+node.title+".":"Focused "+node.title+".");}
-    }
-    if(action.type==="OPEN_MISSION"&&action.skill){
-      const m=missions.find(item=>item.skill.toLowerCase()===action.skill!.toLowerCase())||missions[0];
-      setMission(m);
-      setAgentStatus("Opened the "+m.skill+" mission.");
-    }
-    if(action.type==="CREATE_MISSION"&&action.skill)createMission(action.skill);
-    if(action.type==="MOVE_NODE"&&action.nodeId){
-      world.current?.apply(action);
-      const node=careerNodes.find(item=>item.id===action.nodeId);
-      setAgentStatus(node?"Moved "+node.title+" closer to "+(action.targetNodeId?"the requested node":"the target")+".":"Moved the node.");
-    }
-    if(action.type==="ARRANGE_PATH"){world.current?.apply(action);setAgentStatus("Arranged the career path into a clean spatial layout.");}
-    if(action.type==="RESET_SCENE"){world.current?.apply(action);setAgentStatus("Workspace reset to the original layout.");}
-    if(!["MOVE_NODE","ARRANGE_PATH","RESET_SCENE"].includes(action.type))world.current?.apply(action);
-    setCommand("");
   };
 
   const complete=()=>{
@@ -112,12 +153,6 @@ export default function App(){
     setMission({...mission,completed:true});
     setAgentStatus("Mission completed. +"+mission.xp+" XP.");
   };
-
-  useEffect(()=>{
-    world.current?.setCopilot(selected.title,agentStatus,listening);
-  },[selected,agentStatus,listening]);
-
-  useEffect(()=>()=>recognitionRef.current?.stop?.(),[]);
 
   const xrLabel=xrState==="xr"?"EXIT XR":xrState==="loading"?"CONNECTING…":"ENTER XR / SIMULATOR";
 
@@ -145,13 +180,13 @@ export default function App(){
       <div className="progress"><i style={{width:selected.progress+"%"}}/></div>
       <small>{selected.progress}% pathway progress</small>
       <div className="skill-tags">{selected.skills.map(skill=><span key={skill}>{skill}</span>)}</div>
-      <div className={"agent-status "+(listening?"listening":"")}><span>●</span>{agentStatus}</div>
-      <div className="suggestions">{agentSuggestions.map(s=><button key={s}onClick={()=>run(s)}>{s}</button>)}</div>
-      <form onSubmit={event=>{event.preventDefault();run(command)}}><input value={command}onChange={event=>setCommand(event.target.value)}placeholder="Tell the workspace what to do…"/><button type="button" className={listening?"mic active": "mic"} onClick={startVoice} aria-label={listening?"Stop voice command":"Start voice command"}>{listening?"■":"MIC"}</button><button>Run</button></form>
+      <div className={"agent-status "+(listening||thinking?"listening":"")}><span>●</span>{thinking?"AI AGENT THINKING…":agentStatus}</div>
+      <div className="suggestions">{agentSuggestions.map(s=><button key={s}onClick={()=>void run(s)}>{s}</button>)}</div>
+      <form onSubmit={event=>{event.preventDefault();void run(command)}}><input value={command}onChange={event=>setCommand(event.target.value)}placeholder="Tell the workspace what to do…"/><button type="button" className={listening?"mic active":"mic"} onClick={startVoice} aria-label={listening?"Stop voice command":"Start voice command"}>{listening?"■":"MIC"}</button><button disabled={thinking||!command.trim()}>Run</button></form>
       <div className="mission"><div><span>XP</span><strong>{xp}</strong></div><button onClick={()=>setMission(missions.find(item=>item.skill===selected.title)||missions[0])}>Start mission</button></div>
     </aside>
 
     {mission&&<div className="modal"><div className="modal-card"><div className="eyebrow">MISSION</div><h2>{mission.title}</h2><p>{mission.description}</p><strong>+{mission.xp} XP</strong><div><button onClick={complete}disabled={mission.completed}>{mission.completed?"Completed":"Mark complete"}</button><button onClick={()=>setMission(null)}>Close</button></div></div></div>}
-    <footer>Hands-first • WebXR • AI scene agent • Desktop emulator fallback</footer>
+    <footer>Hands-first • WebXR • AI scene agent • Quest-ready • Desktop fallback</footer>
   </main>
 }
