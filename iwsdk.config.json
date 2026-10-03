@@ -1,0 +1,1 @@
+{"$schema":"./node_modules/@iwsdk/core/dist/schemas/iwsdk-project.v1.schema.json","version":"iwsdk.project.v1","world":{"xr":{"mode":"vr","offer":"always","features":{"handTracking":true}},"features":{"spatialUI":true,"grabbing":true}},"dev":{"emulator":{"device":"metaQuest3","activation":"localhost"}}}
