@@ -1,18 +1,22 @@
 import {
   AmbientLight,
   BoxGeometry,
+  CanvasTexture,
   CylinderGeometry,
   DirectionalLight,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   OneHandGrabbable,
+  PlaneGeometry,
   RayInteractable,
   SessionMode,
   SphereGeometry,
   Vector3,
   World,
 } from "@iwsdk/core";
+import {CanvasTexture as ThreeCanvasTexture} from "three";
 import type {CareerNode,SceneAction,Vec3} from "../types";
 
 type Edge={from:string;to:string;mesh:any};
@@ -25,14 +29,24 @@ export class SkillSpaceWorld {
   originals = new Map<string, Vec3>();
   selectedId: string | null = null;
   onSelect?: (nodeId: string) => void;
+  onCopilotTap?: () => void;
   private edges:Edge[]=[];
   private raf=0;
   private saveTimer=0;
   private edgeMaterial=new MeshStandardMaterial({color:0x475569,roughness:0.8,metalness:0});
   private savedLayout:Record<string,Vec3>={};
+  private copilotCanvas:HTMLCanvasElement|null=null;
+  private copilotTexture:any=null;
+  private copilotMesh:any=null;
 
-  async init(container: HTMLElement, nodes: CareerNode[], onSelect?: (nodeId: string) => void) {
+  async init(
+    container: HTMLElement,
+    nodes: CareerNode[],
+    onSelect?: (nodeId: string) => void,
+    onCopilotTap?: () => void,
+  ) {
     this.onSelect = onSelect;
+    this.onCopilotTap = onCopilotTap;
     this.savedLayout=this.readLayout();
     this.world = await World.create(container, {
       xr: {
@@ -52,6 +66,7 @@ export class SkillSpaceWorld {
 
     for (const node of nodes) this.addNode(node);
     this.createEdges(nodes);
+    this.createCopilotPanel();
     this.startEdgeLoop();
   }
 
@@ -106,6 +121,82 @@ export class SkillSpaceWorld {
         this.edges.push({from:prerequisite,to:node.id,mesh});
       }
     }
+  }
+
+  private createCopilotPanel(){
+    const canvas=document.createElement("canvas");
+    canvas.width=880;
+    canvas.height=500;
+    this.copilotCanvas=canvas;
+    this.copilotTexture=new ThreeCanvasTexture(canvas);
+    this.copilotTexture.colorSpace="srgb";
+
+    const panel=new Mesh(
+      new PlaneGeometry(2.2,1.25),
+      new MeshBasicMaterial({
+        map:this.copilotTexture,
+        transparent:true,
+        depthWrite:false,
+      }),
+    );
+    panel.userData.nonInteractive=false;
+    (panel as any).onClick=()=>this.onCopilotTap?.();
+
+    const entity=this.world.createTransformEntity(panel);
+    entity.object3D.position.set(0,1.55,-1.55);
+    entity.addComponent(RayInteractable);
+    this.copilotMesh=entity;
+    this.setCopilot("DATA ANALYST","Ready for a scene command.",false);
+  }
+
+  setCopilot(title:string,status:string,listening:boolean){
+    const canvas=this.copilotCanvas;
+    const texture=this.copilotTexture;
+    if(!canvas||!texture)return;
+    const ctx=canvas.getContext("2d");
+    if(!ctx)return;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#080d1d";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.strokeStyle=listening?"#22c55e":"#33405f";
+    ctx.lineWidth=4;
+    ctx.strokeRect(8,8,canvas.width-16,canvas.height-16);
+
+    ctx.fillStyle="#8d98b8";
+    ctx.font="700 22px Inter, system-ui, sans-serif";
+    ctx.letterSpacing="3px";
+    ctx.fillText("AI COPILOT",40,55);
+
+    ctx.fillStyle=listening?"#22c55e":"#7c5cff";
+    ctx.beginPath();
+    ctx.arc(790,48,13,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle="#eef2ff";
+    ctx.font="700 38px Inter, system-ui, sans-serif";
+    ctx.fillText(title.slice(0,24),40,115);
+
+    ctx.fillStyle="#aeb8d2";
+    ctx.font="24px Inter, system-ui, sans-serif";
+    const words=status.split(" ");
+    let line="";
+    let y=165;
+    for(const word of words){
+      const next=line?line+" "+word:word;
+      if(ctx.measureText(next).width>760){
+        ctx.fillText(line,40,y);
+        y+=34;
+        line=word;
+      }else line=next;
+    }
+    if(line)ctx.fillText(line,40,y);
+
+    ctx.fillStyle="#64708f";
+    ctx.font="600 20px Inter, system-ui, sans-serif";
+    ctx.fillText(listening?"LISTENING • SAY A COMMAND":"PINCH / CLICK PANEL TO TALK",40,430);
+
+    texture.needsUpdate=true;
   }
 
   private updateEdges(){
@@ -232,6 +323,9 @@ export class SkillSpaceWorld {
     for(const edge of this.edges){
       edge.mesh.geometry?.dispose?.();
     }
+    this.copilotMesh?.object3D?.children?.[0]?.geometry?.dispose?.();
+    this.copilotMesh?.object3D?.children?.[0]?.material?.dispose?.();
+    this.copilotTexture?.dispose?.();
     this.edgeMaterial.dispose();
     this.world?.dispose?.();
   }
