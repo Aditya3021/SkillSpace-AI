@@ -9,10 +9,11 @@ def _tokens(text):
 
 class VectorStore:
     def __init__(self):
-        self.chunks = []
+        self.chunks = {}
 
     def upsert(self, chunks: Iterable[Chunk]):
-        self.chunks.extend(chunks)
+        for chunk in chunks:
+            self.chunks[chunk.id] = chunk
 
     def _score(self, query, doc):
         q, d = Counter(_tokens(query)), Counter(_tokens(doc))
@@ -22,5 +23,5 @@ class VectorStore:
         return overlap / math.sqrt(sum(q.values()) * sum(d.values()))
 
     def search(self, query, k=5):
-        ranked = sorted(self.chunks, key=lambda c: self._score(query, c.text), reverse=True)
+        ranked = sorted(self.chunks.values(), key=lambda c: self._score(query, c.text), reverse=True)
         return [c for c in ranked[:k] if self._score(query, c.text) > 0]
