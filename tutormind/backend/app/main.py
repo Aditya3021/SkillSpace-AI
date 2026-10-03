@@ -1,4 +1,4 @@
-from pathlib import Path
+import os\nfrom pathlib import Path
 from tempfile import NamedTemporaryFile
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,15 +11,15 @@ from .services.quiz import QuizRequest, QuizEngine
 from .services.llm import provider_status
 from .services.video import transcription_contract
 
-app = FastAPI(title="TutorMind AI", version="0.4.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="TutorMind AI", version="0.4.1")
+ALLOWED_ORIGINS = [x.strip() for x in os.getenv("TUTORMIND_CORS_ORIGINS", "*").split(",") if x.strip()]\napp.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 LEARNER = LearnerModel()
 LEARNER_STORE = LearnerStore()
 QUIZ = QuizEngine(LEARNER_STORE)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "tutormind-ai", "version": "0.4.0"}
+    return {"status": "ok", "service": "tutormind-ai", "version": "0.4.1"}
 
 @app.get("/capabilities")
 def capabilities():
