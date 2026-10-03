@@ -23,6 +23,7 @@ export default function App(){
   const[xrState,setXrState]=useState<"loading"|"browser"|"xr"|"error">("loading");
   const[listening,setListening]=useState(false);
   const[thinking,setThinking]=useState(false);
+  const[demo,setDemo]=useState(false);
   const recognitionRef=useRef<any>(null);
 
   const select=(node:CareerNode)=>{
@@ -147,6 +148,22 @@ export default function App(){
     setXrState(entered?"xr":"browser");
   };
 
+  const startDemo=async()=>{
+    if(demo)return;
+    setDemo(true);
+    const steps=[
+      {delay:0,text:"Demo: focusing Data Analyst.",action:{type:"FOCUS_NODE",nodeId:"role-data-analyst"} as SceneAction},
+      {delay:900,text:"Demo: arranging the career graph.",action:{type:"ARRANGE_PATH"} as SceneAction},
+      {delay:1800,text:"Demo: creating the SQL mission.",action:{type:"CREATE_MISSION",skill:"SQL"} as SceneAction},
+    ];
+    for(const step of steps){
+      await new Promise(resolve=>window.setTimeout(resolve,step.delay));
+      applyAction(step.action,step.text);
+    }
+    setAgentStatus("Demo flow complete. Try a voice command next.");
+    setDemo(false);
+  };
+
   const complete=()=>{
     if(!mission)return;
     setXp(value=>value+mission.xp);
@@ -163,6 +180,7 @@ export default function App(){
       <div className="header-actions">
         <span className={"xr-status "+xrState}>{xrState==="xr"?"XR ACTIVE":xrState==="error"?"XR UNAVAILABLE":"BROWSER READY"}</span>
         <button onClick={async()=>{if(xrState==="xr"){await world.current?.exitXR();setXrState("browser");}else await enterXR();}} disabled={xrState==="loading"||xrState==="error"}>{xrLabel}</button>
+        <button className="demo-button" onClick={()=>void startDemo()} disabled={demo}>{demo?"DEMO RUNNING":"RUN DEMO"}</button>
       </div>
     </header>
 
