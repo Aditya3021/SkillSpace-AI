@@ -22,7 +22,6 @@ export class SkillSpaceWorld {
 
   async init(container: HTMLElement, nodes: CareerNode[], onSelect?: (nodeId: string) => void) {
     this.onSelect = onSelect;
-
     this.world = await World.create(container, {
       xr: {
         sessionMode: SessionMode.ImmersiveVR,
@@ -36,7 +35,6 @@ export class SkillSpaceWorld {
     });
 
     this.world.createTransformEntity(new AmbientLight(0xffffff, 1.5));
-
     const key = this.world.createTransformEntity(new DirectionalLight(0xffffff, 2));
     key.object3D.position.set(2, 4, 2);
 
@@ -55,9 +53,7 @@ export class SkillSpaceWorld {
   }
 
   async exitXR() {
-    if (this.world?.visibilityState?.value !== "non-immersive") {
-      await this.world?.exitXR?.();
-    }
+    await this.world?.exitXR?.();
   }
 
   isXRActive() {
@@ -113,16 +109,11 @@ export class SkillSpaceWorld {
     if (!entity) return;
 
     this.selectedId = id;
-
     for (const [key, object] of this.objects) {
       const material = object.object3D.children?.[0]?.material;
       if (material?.color) {
         material.color.set(
-          key === id
-            ? 0xfbbf24
-            : key === "role-data-analyst"
-              ? 0x7c5cff
-              : 0x38bdf8,
+          key === id ? 0xfbbf24 : key === "role-data-analyst" ? 0x7c5cff : 0x38bdf8,
         );
         material.emissive?.set?.(0x000000);
       }
@@ -134,17 +125,30 @@ export class SkillSpaceWorld {
     if (entity) entity.object3D.position.set(...position);
   }
 
+  arrangePath() {
+    const role=this.objects.get("role-data-analyst");
+    if(role)role.object3D.position.set(0,1.65,-2.2);
+
+    const layout:Record<string,Vec3>={
+      "skill-python":[-1.6,1.15,-2.45],
+      "skill-sql":[0,1.15,-2.65],
+      "skill-excel":[1.6,1.15,-2.45],
+      "skill-pandas":[-1.6,0.55,-2.2],
+    };
+    for(const [id,position] of Object.entries(layout))this.move(id,position);
+  }
+
   reset() {
     for (const [id, position] of this.originals) this.move(id, position);
     this.selectedId = null;
   }
 
   apply(action: SceneAction) {
-    if (action.type === "FOCUS_NODE" && action.nodeId) this.focus(action.nodeId);
-    if (action.type === "MOVE_NODE" && action.nodeId && action.position) {
-      this.move(action.nodeId, action.position);
-    }
-    if (action.type === "RESET_SCENE") this.reset();
+    if(action.type==="FOCUS_NODE"&&action.nodeId)this.focus(action.nodeId);
+    if(action.type==="SHOW_SKILL"&&action.nodeId)this.focus(action.nodeId);
+    if(action.type==="MOVE_NODE"&&action.nodeId&&action.position)this.move(action.nodeId,action.position);
+    if(action.type==="ARRANGE_PATH")this.arrangePath();
+    if(action.type==="RESET_SCENE")this.reset();
   }
 
   dispose() {
