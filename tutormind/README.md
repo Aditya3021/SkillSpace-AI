@@ -1,51 +1,72 @@
-# TutorMind AI — Multimodal AI Hackathon 2026 · Track D
+# TutorMind AI
 
-TutorMind is an adaptive AI study companion that unifies lecture videos, textbooks and slides into a source-grounded knowledge base, then turns learner assessment events into personalized tutoring.
+TutorMind is a source-grounded, adaptive learning cockpit for personalized tutoring.
 
-## Current build
-- Browser learning cockpit
-- Material library
-- Source-grounded tutor UX
-- Citation/provenance contract
-- Adaptive quiz loop
-- Concept mastery tracking
-- FastAPI backend
-- PDF/PPTX ingestion
-- Metadata-preserving chunking
-- Baseline retrieval
-- Assessment API
-- Docker deployment scaffold
-- Tests
+## Problem
+Generic AI tutoring can answer questions without grounding them in a learner's own course material, while static quizzes do not adapt to what the learner actually knows.
+
+## Solution
+1. Multimodal course ingestion — PDF/PPTX extraction with source locators and a video transcription contract.
+2. Grounded retrieval — retrieves course chunks and returns citations with the answer; missing evidence produces an explicit no-evidence response.
+3. Persistent learner model — stores concept mastery per learner in SQLite and identifies weak concepts.
+4. Adaptive assessment — selects question difficulty from current mastery and updates mastery after each assessment.
 
 ## Architecture
+course material → extraction → indexed chunks → retrieval → cited tutor answer
 
-Materials → extraction/transcription → chunks + metadata → embeddings/vector DB → retrieval → grounded tutor → adaptive assessment → learner model → next learning action.
+assessment → mastery update → weakness detection → next activity
 
-## Run backend
+See ARCHITECTURE.md for reliability gates and production replacement points.
 
-```bash
-cd tutormind/backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+## Repository layout
+- backend/ — FastAPI API, ingestion, retrieval, learner store and quiz engine.
+- frontend/ — zero-build browser cockpit.
+- DEMO.md — judge walkthrough.
 
-Open the frontend with a static server:
+## Run locally
 
-```bash
-python -m http.server 8080 --directory tutormind/frontend
-```
+### Backend
+    cd tutormind/backend
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn app.main:app --reload --port 8000
 
-## Production roadmap
-1. Embeddings + vector database.
-2. LLM adapter with structured citations.
-3. Video transcription with timestamps.
-4. Video keyframe extraction.
-5. Cross-modal retrieval.
-6. Concept/prerequisite graph.
-7. Adaptive difficulty + spaced review.
-8. Evaluation harness: retrieval recall, citation precision, faithfulness, quiz validity and learning gain.
+Health check: http://localhost:8000/health
 
-## AI disclosure
-AI coding assistants may be used during development. The final hackathon submission should disclose the tools used and identify AI-assisted portions as required by the competition rules.
+### Frontend
+Open tutormind/frontend/index.html in a browser. In AI Tutor, save the backend URL. For local development use http://localhost:8000.
+
+## API
+- GET /health
+- GET /capabilities
+- POST /ingest
+- POST /ask
+- POST /assessment
+- GET /learner/weak?learner_id=demo-learner
+- POST /quiz/next
+- GET /video/{source_id}/contract
+
+## Deployment
+The repository includes tutormind/render.yaml for a Render FastAPI deployment and tutormind/frontend/netlify.toml for static hosting.
+After deploying the API, paste its HTTPS URL into the frontend Backend URL field.
+
+## Tech stack
+FastAPI, Python, SQLite, Pydantic, PDF/PPTX parsers, HTML/CSS/JavaScript.
+
+## Reliability
+- Factual tutoring answers are tied to retrieved evidence.
+- Citations are generated from retrieved source metadata.
+- Missing evidence returns a no-evidence response instead of a fabricated citation.
+- Learner state is explicit and inspectable.
+
+## Submission checklist
+- [ ] Public GitHub repository
+- [ ] Backend health endpoint works
+- [ ] Frontend opens without a build step
+- [ ] Backend URL configured in frontend
+- [ ] Demo video recorded
+- [ ] 3–5 screenshots captured
+- [ ] Problem, solution, architecture and tech stack entered in the submission form
+- [ ] AI-tool disclosure completed if required
+- [ ] Final submission tested from a clean browser
