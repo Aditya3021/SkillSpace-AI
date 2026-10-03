@@ -20,6 +20,8 @@ export default function App(){
   const[mission,setMission]=useState<Mission|null>(null);
   const[agentStatus,setAgentStatus]=useState("Ready for a scene command.");
   const[xrState,setXrState]=useState<"loading"|"browser"|"xr"|"error">("loading");
+  const[listening,setListening]=useState(false);
+  const recognitionRef=useRef<any>(null);
 
   useEffect(()=>{
     if(!host.current)return;
@@ -29,12 +31,37 @@ export default function App(){
     w.init(host.current,careerNodes,(nodeId)=>{
       const node=careerNodes.find(item=>item.id===nodeId);
       if(node){setSelected(node);w.focus(nodeId);}
-    }).then(()=>{if(!disposed)setXrState("browser");}).catch((error)=>{
+    },()=>startVoice()).then(()=>{if(!disposed){setXrState("browser");w.setCopilot("DATA ANALYST",agentStatus,false);}}).catch((error)=>{
       console.error(error);
       if(!disposed)setXrState("error");
     });
     return()=>{disposed=true;w.dispose();world.current=null;};
   },[]);
+
+  const startVoice=()=>{
+    const SpeechRecognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
+    if(!SpeechRecognition){
+      setAgentStatus("Voice commands are not supported in this browser.");
+      return;
+    }
+    if(listening){
+      recognitionRef.current?.stop?.();
+      return;
+    }
+    const recognition=new SpeechRecognition();
+    recognition.lang="en-IN";
+    recognition.interimResults=false;
+    recognition.continuous=false;
+    recognition.onstart=()=>{setListening(true);setAgentStatus("Listening for a scene command…");};
+    recognition.onresult=(event:any)=>{
+      const transcript=event.results?.[0]?.[0]?.transcript?.trim()||"";
+      if(transcript)run(transcript);
+    };
+    recognition.onerror=()=>{setListening(false);setAgentStatus("Voice input stopped. Try again.");};
+    recognition.onend=()=>setListening(false);
+    recognitionRef.current=recognition;
+    try{recognition.start();}catch{setListening(false);}
+  };
 
   const select=(node:CareerNode)=>{
     setSelected(node);
@@ -86,6 +113,12 @@ export default function App(){
     setAgentStatus("Mission completed. +"+mission.xp+" XP.");
   };
 
+  useEffect(()=>{
+    world.current?.setCopilot(selected.title,agentStatus,listening);
+  },[selected,agentStatus,listening]);
+
+  useEffect(()=>()=>recognitionRef.current?.stop?.(),[]);
+
   const xrLabel=xrState==="xr"?"EXIT XR":xrState==="loading"?"CONNECTING…":"ENTER XR / SIMULATOR";
 
   return <main>
@@ -112,9 +145,9 @@ export default function App(){
       <div className="progress"><i style={{width:selected.progress+"%"}}/></div>
       <small>{selected.progress}% pathway progress</small>
       <div className="skill-tags">{selected.skills.map(skill=><span key={skill}>{skill}</span>)}</div>
-      <div className="agent-status"><span>●</span>{agentStatus}</div>
+      <div className={"agent-status "+(listening?"listening":"")}><span>●</span>{agentStatus}</div>
       <div className="suggestions">{agentSuggestions.map(s=><button key={s}onClick={()=>run(s)}>{s}</button>)}</div>
-      <form onSubmit={event=>{event.preventDefault();run(command)}}><input value={command}onChange={event=>setCommand(event.target.value)}placeholder="Tell the workspace what to do…"/><button>Run</button></form>
+      <form onSubmit={event=>{event.preventDefault();run(command)}}><input value={command}onChange={event=>setCommand(event.target.value)}placeholder="Tell the workspace what to do…"/><button type="button" className={listening?"mic active": "mic"} onClick={startVoice} aria-label={listening?"Stop voice command":"Start voice command"}>{listening?"■":"MIC"}</button><button>Run</button></form>
       <div className="mission"><div><span>XP</span><strong>{xp}</strong></div><button onClick={()=>setMission(missions.find(item=>item.skill===selected.title)||missions[0])}>Start mission</button></div>
     </aside>
 
