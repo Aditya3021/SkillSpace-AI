@@ -16,7 +16,7 @@ course material → extraction → indexed chunks → retrieval → cited tutor 
 
 assessment → mastery update → weakness detection → next activity
 
-See ARCHITECTURE.md for reliability gates and production replacement points.
+See docs/ARCHITECTURE.md for reliability gates and production replacement points.
 
 ## Repository layout
 - backend/ — FastAPI API, ingestion, retrieval, learner store and quiz engine.
