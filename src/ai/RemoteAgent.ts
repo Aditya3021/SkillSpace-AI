@@ -1,4 +1,5 @@
-import type {CareerNode,SceneAction} from "../types";
+import {careerNodes} from "../data/career";
+import type {CareerNode,SceneAction,Vec3} from "../types";
 
 export type RemoteAgentResult={
   action:SceneAction["type"]|"NONE";
@@ -9,6 +10,8 @@ export type RemoteAgentResult={
   missionDescription:string|null;
   missionXp:number|null;
 };
+
+function midpoint(a:Vec3,b:Vec3):Vec3{return[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];}
 
 function nodeIdForSkill(skill:string|null){
   if(!skill)return null;
@@ -61,7 +64,11 @@ export function remoteToSceneAction(result:RemoteAgentResult):SceneAction|null{
     case"RESET_SCENE":
       return{type:"RESET_SCENE"};
     case"MOVE_NODE":
-      return nodeId&&targetNodeId&&nodeId!==targetNodeId?{type:"MOVE_NODE",nodeId,targetNodeId}:null;
+      if(!nodeId||!targetNodeId||nodeId===targetNodeId)return null;
+      const source=careerNodes.find(node=>node.id===nodeId);
+      const target=careerNodes.find(node=>node.id===targetNodeId);
+      if(!source||!target)return null;
+      return{type:"MOVE_NODE",nodeId,targetNodeId,position:midpoint(source.position,target.position)};
     default:
       return null;
   }
