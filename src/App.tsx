@@ -187,7 +187,6 @@ export default function App(){
   const complete=()=>{
     if(!mission||mission.completed)return;
     setXp(value=>value+mission.xp);
-    setXp(value=>value+mission.xp);
     setCompletedMissionIds(ids=>ids.includes(mission.id)?ids:[...ids,mission.id]);
     setMission({...mission,completed:true});
     setAgentStatus("Mission completed. +"+mission.xp+" XP.");
