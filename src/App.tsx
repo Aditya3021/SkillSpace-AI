@@ -30,7 +30,9 @@ export default function App(){
   const world=useRef<SkillSpaceWorld|null>(null);
   const[selected,setSelected]=useState<CareerNode>(careerNodes[0]);
   const[command,setCommand]=useState("");
-  const[xp,setXp]=useState(()=>readProgress().xp);
+  const initialProgress=readProgress();
+  const[xp,setXp]=useState(initialProgress.xp);
+  const[completedMissionIds,setCompletedMissionIds]=useState<string[]>(initialProgress.completedMissionIds);
   const[mission,setMission]=useState<Mission|null>(null);
   const[agentStatus,setAgentStatus]=useState("Ready for a scene command.");
   const[xrState,setXrState]=useState<"loading"|"browser"|"xr"|"error">("loading");
@@ -49,7 +51,7 @@ export default function App(){
   const createMission=(skill:string,custom?:{title?:string|null;description?:string|null;xp?:number|null})=>{
     const template=missionTemplates[skill]??missionTemplates.Python;
     setMission({
-      id:"agent-"+skill.toLowerCase().replace(/[^a-z0-9]+/g,"-")+"-"+Date.now(),
+      id:"agent-"+skill.toLowerCase().replace(/[^a-z0-9]+/g,"-")+"-mission",
       title:custom?.title||template.title,
       skill,
       description:custom?.description||template.description,
@@ -66,7 +68,7 @@ export default function App(){
     }
     if(action.type==="OPEN_MISSION"&&action.skill){
       const m=missions.find(item=>item.skill.toLowerCase()===action.skill!.toLowerCase())||missions[0];
-      setMission({...m,completed:false});
+      setMission({...m,completed:completedMissionIds.includes(m.id)});
       setAgentStatus(message||("Opened the "+m.skill+" mission."));
     }
     if(action.type==="CREATE_MISSION"&&action.skill)createMission(action.skill);
@@ -156,8 +158,8 @@ export default function App(){
   useEffect(()=>{world.current?.setCopilot(selected.title,agentStatus,listening||thinking);},[selected,agentStatus,listening,thinking]);
 
   useEffect(()=>{
-    try{localStorage.setItem(PROGRESS_KEY,JSON.stringify({xp,completedMissionIds:[]}));}catch{}
-  },[xp]);
+    try{localStorage.setItem(PROGRESS_KEY,JSON.stringify({xp,completedMissionIds}));}catch{}
+  },[xp,completedMissionIds]);
   useEffect(()=>()=>recognitionRef.current?.stop?.(),[]);
 
   const enterXR=async()=>{
@@ -185,6 +187,8 @@ export default function App(){
   const complete=()=>{
     if(!mission||mission.completed)return;
     setXp(value=>value+mission.xp);
+    setXp(value=>value+mission.xp);
+    setCompletedMissionIds(ids=>ids.includes(mission.id)?ids:[...ids,mission.id]);
     setMission({...mission,completed:true});
     setAgentStatus("Mission completed. +"+mission.xp+" XP.");
   };
@@ -219,7 +223,7 @@ export default function App(){
       <div className={"agent-status "+(listening||thinking?"listening":"")}><span>●</span>{thinking?"AI AGENT THINKING…":agentStatus}</div>
       <div className="suggestions">{agentSuggestions.map(s=><button key={s}onClick={()=>void run(s)}>{s}</button>)}</div>
       <form onSubmit={event=>{event.preventDefault();void run(command)}}><input value={command}onChange={event=>setCommand(event.target.value)}placeholder="Tell the workspace what to do…"/><button type="button" className={listening?"mic active":"mic"} onClick={startVoice} aria-label={listening?"Stop voice command":"Start voice command"}>{listening?"■":"MIC"}</button><button disabled={thinking||!command.trim()}>Run</button></form>
-      <div className="mission"><div><span>XP</span><strong>{xp}</strong></div><button onClick={()=>setMission(missions.find(item=>item.skill===selected.title)||missions[0])}>Start mission</button></div>
+      <div className="mission"><div><span>XP</span><strong>{xp}</strong></div><button onClick={()=>(()=>{const m=missions.find(item=>item.skill===selected.title)||missions[0];setMission({...m,completed:completedMissionIds.includes(m.id)});})()}>Start mission</button></div>
     </aside>
 
     {mission&&<div className="modal"><div className="modal-card"><div className="eyebrow">MISSION</div><h2>{mission.title}</h2><p>{mission.description}</p><strong>+{mission.xp} XP</strong><div><button onClick={complete}disabled={mission.completed}>{mission.completed?"Completed":"Mark complete"}</button><button onClick={()=>setMission(null)}>Close</button></div></div></div>}
