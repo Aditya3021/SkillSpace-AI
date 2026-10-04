@@ -5,6 +5,19 @@ import{askRemoteAgent,remoteToSceneAction}from"./ai/RemoteAgent";
 import{SkillSpaceWorld}from"./scene/SkillSpaceWorld";
 import type{CareerNode,Mission,SceneAction}from"./types";
 
+const PROGRESS_KEY="skillspace-progress-v1";
+
+type SavedProgress={xp:number;completedMissionIds:string[]};
+
+function readProgress():SavedProgress{
+  try{
+    const raw=localStorage.getItem(PROGRESS_KEY);
+    if(!raw)return{xp:0,completedMissionIds:[]};
+    const value=JSON.parse(raw);
+    return{xp:typeof value?.xp==="number"?value.xp:0,completedMissionIds:Array.isArray(value?.completedMissionIds)?value.completedMissionIds.filter((id:any)=>typeof id==="string"):[]};
+  }catch{return{xp:0,completedMissionIds:[]};}
+}
+
 const missionTemplates:Record<string,Omit<Mission,"id"|"completed">>={
   Python:{title:"Analyze a CSV",skill:"Python",description:"Load a dataset, clean missing values and produce three useful findings.",xp:100},
   SQL:{title:"Write 5 SQL queries",skill:"SQL",description:"Use joins, grouping and a window function on a sample dataset.",xp:100},
@@ -17,7 +30,7 @@ export default function App(){
   const world=useRef<SkillSpaceWorld|null>(null);
   const[selected,setSelected]=useState<CareerNode>(careerNodes[0]);
   const[command,setCommand]=useState("");
-  const[xp,setXp]=useState(0);
+  const[xp,setXp]=useState(()=>readProgress().xp);
   const[mission,setMission]=useState<Mission|null>(null);
   const[agentStatus,setAgentStatus]=useState("Ready for a scene command.");
   const[xrState,setXrState]=useState<"loading"|"browser"|"xr"|"error">("loading");
@@ -25,6 +38,7 @@ export default function App(){
   const[thinking,setThinking]=useState(false);
   const[demo,setDemo]=useState(false);
   const recognitionRef=useRef<any>(null);
+  const listeningRef=useRef(false);
 
   const select=(node:CareerNode)=>{
     setSelected(node);
@@ -52,7 +66,7 @@ export default function App(){
     }
     if(action.type==="OPEN_MISSION"&&action.skill){
       const m=missions.find(item=>item.skill.toLowerCase()===action.skill!.toLowerCase())||missions[0];
-      setMission(m);
+      setMission({...m,completed:false});
       setAgentStatus(message||("Opened the "+m.skill+" mission."));
     }
     if(action.type==="CREATE_MISSION"&&action.skill)createMission(action.skill);
@@ -105,7 +119,7 @@ export default function App(){
       setAgentStatus("Voice commands are not supported in this browser.");
       return;
     }
-    if(listening){
+    if(listeningRef.current){
       recognitionRef.current?.stop?.();
       return;
     }
@@ -113,15 +127,15 @@ export default function App(){
     recognition.lang="en-IN";
     recognition.interimResults=false;
     recognition.continuous=false;
-    recognition.onstart=()=>{setListening(true);setAgentStatus("Listening for a scene command…");};
+    recognition.onstart=()=>{listeningRef.current=true;setListening(true);setAgentStatus("Listening for a scene command…");};
     recognition.onresult=(event:any)=>{
       const transcript=event.results?.[0]?.[0]?.transcript?.trim()||"";
       if(transcript)void run(transcript);
     };
-    recognition.onerror=()=>{setListening(false);setAgentStatus("Voice input stopped. Try again.");};
-    recognition.onend=()=>setListening(false);
+    recognition.onerror=()=>{listeningRef.current=false;setListening(false);setAgentStatus("Voice input stopped. Try again.");};
+    recognition.onend=()=>{listeningRef.current=false;setListening(false);};
     recognitionRef.current=recognition;
-    try{recognition.start();}catch{setListening(false);}
+    try{recognition.start();}catch{listeningRef.current=false;setListening(false);}
   };
 
   useEffect(()=>{
@@ -140,6 +154,10 @@ export default function App(){
   },[]);
 
   useEffect(()=>{world.current?.setCopilot(selected.title,agentStatus,listening||thinking);},[selected,agentStatus,listening,thinking]);
+
+  useEffect(()=>{
+    try{localStorage.setItem(PROGRESS_KEY,JSON.stringify({xp,completedMissionIds:[]}));}catch{}
+  },[xp]);
   useEffect(()=>()=>recognitionRef.current?.stop?.(),[]);
 
   const enterXR=async()=>{
@@ -165,7 +183,7 @@ export default function App(){
   };
 
   const complete=()=>{
-    if(!mission)return;
+    if(!mission||mission.completed)return;
     setXp(value=>value+mission.xp);
     setMission({...mission,completed:true});
     setAgentStatus("Mission completed. +"+mission.xp+" XP.");
