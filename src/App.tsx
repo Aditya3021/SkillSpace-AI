@@ -18,6 +18,14 @@ function readProgress():SavedProgress{
   }catch{return{xp:0,completedMissionIds:[]};}
 }
 
+function missionIdFor(skill:string,title:string,description:string,xp:number){
+  const input=skill.trim().toLowerCase()+"|"+title.trim().toLowerCase()+"|"+description.trim().toLowerCase()+"|"+xp;
+  let hash=2166136261;
+  for(let index=0;index<input.length;index++){hash^=input.charCodeAt(index);hash=Math.imul(hash,16777619);}
+  const normalizedSkill=skill.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"skill";
+  return "agent-"+normalizedSkill+"-"+(hash>>>0).toString(36);
+}
+
 const missionTemplates:Record<string,Omit<Mission,"id"|"completed">>={
   Python:{title:"Analyze a CSV",skill:"Python",description:"Load a dataset, clean missing values and produce three useful findings.",xp:100},
   SQL:{title:"Write 5 SQL queries",skill:"SQL",description:"Use joins, grouping and a window function on a sample dataset.",xp:100},
@@ -51,12 +59,12 @@ export default function App(){
   const createMission=(skill:string,custom?:{title?:string|null;description?:string|null;xp?:number|null})=>{
     const template=missionTemplates[skill]??missionTemplates.Python;
     setMission({
-      id:"agent-"+skill.toLowerCase().replace(/[^a-z0-9]+/g,"-")+"-mission",
-      title:custom?.title||template.title,
+      title:custom?.title??template.title,
       skill,
-      description:custom?.description||template.description,
-      xp:custom?.xp||template.xp,
-      completed:false
+      description:custom?.description??template.description,
+      xp:custom?.xp??template.xp,
+      id:missionIdFor(skill,custom?.title??template.title,custom?.description??template.description,custom?.xp??template.xp),
+      completed:completedMissionIds.includes(missionIdFor(skill,custom?.title??template.title,custom?.description??template.description,custom?.xp??template.xp))
     });
     setAgentStatus("Created a mission for "+skill+".");
   };
@@ -185,7 +193,7 @@ export default function App(){
   };
 
   const complete=()=>{
-    if(!mission||mission.completed)return;
+    if(!mission||mission.completed||completedMissionIds.includes(mission.id))return;
     setXp(value=>value+mission.xp);
     setCompletedMissionIds(ids=>ids.includes(mission.id)?ids:[...ids,mission.id]);
     setMission({...mission,completed:true});
